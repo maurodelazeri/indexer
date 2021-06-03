@@ -1,5 +1,7 @@
 # Indexer proxy
 
+https://ethereum-etl.readthedocs.io/en/latest/commands/#export_blocks_and_transactions
+
 ## eth_getLogs
 
 FILTER OBJECT
