@@ -74,4 +74,8 @@ func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) 
 		logs = append(logs, log)
 	}
 
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set("X-Content-Type-Options", "nosniff")
+	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	json.NewEncoder(rw).Encode(logs)
 }
