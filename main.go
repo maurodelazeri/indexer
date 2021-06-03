@@ -1,21 +1,29 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"sync/atomic"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
+	_ "github.com/lib/pq"
 )
 
 type QuiknodeProxy struct {
-	app_port                           string
-	downstream_fast_rpc_client_addr    string
-	downstream_fast_ws_client_addr     string
-	downstream_archive_rpc_client_addr string
-	downstream_archive_ws_client_addr  string
+	app_port   string
+	client_rpc string
+	db         *sql.DB
 }
+
+const (
+	host     = "161.35.98.164"
+	port     = 5432
+	user     = "postgres"
+	password = "Br@sa154"
+	dbname   = "ethereum_mainnet"
+)
 
 var (
 	healthy        int32
@@ -23,6 +31,27 @@ var (
 )
 
 func init() {
+	quiknode_proxy.client_rpc = "http://apps.zinnion.com:8547"
+
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+		"password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
+
+	db, err := sql.Open("postgres", psqlInfo)
+	if err != nil {
+		panic(err)
+	}
+	// defer db.Close()
+
+	quiknode_proxy.db = db
+
+	err = quiknode_proxy.db.Ping()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Successfully connected postgres!")
+
 	atomic.StoreInt32(&healthy, 1)
 
 	app_port, ok := os.LookupEnv("APP_PORT")
@@ -31,43 +60,12 @@ func init() {
 		os.Exit(1)
 	}
 	quiknode_proxy.app_port = app_port
-
-	// Archive fast
-	downstream_fast_rpc_client_addr, ok := os.LookupEnv("CLIENT_DOWN_STREAM_FAST_RPC")
-	if !ok {
-		fmt.Println("CLIENT_DOWN_STREAM_FAST_RPC is not present")
-		os.Exit(1)
-	}
-	quiknode_proxy.downstream_fast_rpc_client_addr = downstream_fast_rpc_client_addr
-
-	downstream_fast_ws_client_addr, ok := os.LookupEnv("CLIENT_DOWN_STREAM_FAST_WS")
-	if !ok {
-		fmt.Println("CLIENT_DOWN_STREAM_FAST_WS is not present")
-		os.Exit(1)
-	}
-	quiknode_proxy.downstream_fast_ws_client_addr = downstream_fast_ws_client_addr
-
-	// Archive mode
-	downstream_archive_rpc_client_addr, ok := os.LookupEnv("CLIENT_DOWN_STREAM_ARCHIVE_RPC")
-	if !ok {
-		fmt.Println("CLIENT_DOWN_STREAM_ARCHIVE_RPC is not present")
-	}
-	quiknode_proxy.downstream_archive_rpc_client_addr = downstream_archive_rpc_client_addr
-
-	downstream_archive_ws_client_addr, ok := os.LookupEnv("CLIENT_DOWN_STREAM_ARCHIVE_WS")
-	if !ok {
-		fmt.Println("CLIENT_DOWN_STREAM_ARCHIVE_WS is not present")
-	}
-	quiknode_proxy.downstream_archive_ws_client_addr = downstream_archive_ws_client_addr
-
 }
 
 func main() {
 	router := mux.NewRouter().StrictSlash(false)
 	router.HandleFunc("/", proxyHandler)
 	router.HandleFunc("/healthz", healthzHandler)
-	router.HandleFunc("/make_it_fail", make_it_failHandler)
-	router.HandleFunc("/make_it_work", make_it_workHandler)
 	n := negroni.New(
 		negroni.NewRecovery(),
 		negroni.NewLogger(),
