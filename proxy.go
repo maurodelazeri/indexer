@@ -57,7 +57,6 @@ func proxyHandler(rw http.ResponseWriter, r *http.Request) {
 
 		rw.Header().Set("Content-Type", "application/json")
 		rw.Header().Set("X-Content-Type-Options", "nosniff")
-		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		io.WriteString(rw, string(cresb))
 		return
 
@@ -72,7 +71,6 @@ func proxyHandler(rw http.ResponseWriter, r *http.Request) {
 		cresb, _ := json.Marshal(cresp)
 		rw.Header().Set("Content-Type", "application/json")
 		rw.Header().Set("X-Content-Type-Options", "nosniff")
-		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		io.WriteString(rw, string(cresb))
 		return
 	}
@@ -89,7 +87,6 @@ func proxyHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
-	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	json.NewEncoder(rw).Encode(cresp)
 
 }

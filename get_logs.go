@@ -48,12 +48,12 @@ func toFilterArg(q ethereum.FilterQuery) (interface{}, error) {
 
 func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) {
 
-	a := ethereum.FilterQuery{
-		Addresses: addresses,
-		FromBlock: big.NewInt(1),
-		ToBlock:   big.NewInt(2),
-		Topics:    [][]common.Hash{},
-	},
+	// a := ethereum.FilterQuery{
+	// 	Addresses: addresses,
+	// 	FromBlock: big.NewInt(1),
+	// 	ToBlock:   big.NewInt(2),
+	// 	Topics:    [][]common.Hash{},
+	// }
 
 	// field, ok := FilterQuery(request_payload.Params)
 
@@ -87,7 +87,6 @@ func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) 
 		cresb, _ := json.Marshal(cresp)
 		rw.Header().Set("Content-Type", "application/json")
 		rw.Header().Set("X-Content-Type-Options", "nosniff")
-		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		io.WriteString(rw, string(cresb))
 		return
 	}
@@ -119,7 +118,6 @@ func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) 
 			cresb, _ := json.Marshal(cresp)
 			rw.Header().Set("Content-Type", "application/json")
 			rw.Header().Set("X-Content-Type-Options", "nosniff")
-			rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			io.WriteString(rw, string(cresb))
 			return
 		}
@@ -141,6 +139,5 @@ func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) 
 
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
-	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	json.NewEncoder(rw).Encode(logs)
 }
