@@ -48,6 +48,11 @@ func toFilterArg(q ethereum.FilterQuery) (interface{}, error) {
 
 func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) {
 
+	// var test0 FilterCriteria
+	// if err := json.Unmarshal([]byte("{}"), &test0); err != nil {
+	// 	t.Fatal(err)
+	// }
+
 	// a := ethereum.FilterQuery{
 	// 	Addresses: addresses,
 	// 	FromBlock: big.NewInt(1),
