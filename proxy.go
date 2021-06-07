@@ -13,7 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func httpPost(url string, data []byte) (string, error) {
+func (q *QuiknodeIndexer) httpPost(url string, data []byte) (string, error) {
 	timeout := time.Second * 10
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -38,7 +38,7 @@ func httpPost(url string, data []byte) (string, error) {
 	return string(respBody), nil
 }
 
-func proxyHandler(rw http.ResponseWriter, r *http.Request) {
+func (q *QuiknodeIndexer) proxyHandler(rw http.ResponseWriter, r *http.Request) {
 	// Request payload
 	var request_payload Request
 
@@ -76,7 +76,7 @@ func proxyHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if request_payload.Method == "eth_getLogs" {
-		get_logs(rw, r, request_payload)
+		q.get_logs(rw, r, request_payload)
 		return
 	}
 
@@ -91,8 +91,8 @@ func proxyHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func healthzHandler(rw http.ResponseWriter, r *http.Request) {
-	if atomic.LoadInt32(&healthy) == 1 {
+func (q *QuiknodeIndexer) healthzHandler(rw http.ResponseWriter, r *http.Request) {
+	if atomic.LoadInt32(&q.healthy) == 1 {
 		rw.Header().Set("X-Content-Type-Options", "nosniff")
 		rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 		io.WriteString(rw, `{"alive": true}`)

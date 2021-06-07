@@ -46,8 +46,7 @@ func toFilterArg(q ethereum.FilterQuery) (interface{}, error) {
 	return arg, nil
 }
 
-func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) {
-
+func (q *QuiknodeIndexer) get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) {
 	// var test0 FilterCriteria
 	// if err := json.Unmarshal([]byte("{}"), &test0); err != nil {
 	// 	t.Fatal(err)
@@ -80,7 +79,7 @@ func get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) 
 	// 	filter = NewRangeFilter(api.backend, begin, end, crit.Addresses, crit.Topics)
 	// }
 
-	rows, err := quiknode_proxy.db.Query(`select log_index,transaction_hash,transaction_index,address,data,
+	rows, err := GetDB().DB.Query(`select log_index,transaction_hash,transaction_index,address,data,
 	topic0,topic1,topic2,topic3,block_timestamp,block_number,block_hash from logs limit 1`)
 	if err != nil {
 		logrus.Error("problem with select.", err.Error())
