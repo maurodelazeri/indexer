@@ -46,38 +46,34 @@ func toFilterArg(q ethereum.FilterQuery) (interface{}, error) {
 	return arg, nil
 }
 
+type LogsFilterQuery struct {
+	BlockHash *string  // used by eth_getLogs, return logs only from block with this hash
+	FromBlock *big.Int // beginning of the queried range, nil means genesis block
+	ToBlock   *big.Int // end of the range, nil means latest block
+	Addresses []string // restricts matches to events created by specific contracts
+
+	// The Topic list restricts matches to particular event topics. Each event has a list
+	// of topics. Topics matches a prefix of that list. An empty element slice matches any
+	// topic. Non-empty elements represent an alternative that matches any of the
+	// contained topics.
+	//
+	// Examples:
+	// {} or nil          matches any topic list
+	// {{A}}              matches topic A in first position
+	// {{}, {B}}          matches any topic in first position AND B in second position
+	// {{A}, {B}}         matches topic A in first position AND B in second position
+	// {{A, B}, {C, D}}   matches topic (A OR B) in first position AND (C OR D) in second position
+	Topics [][]string
+}
+
 func (q *QuiknodeIndexer) get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) {
-	// var test0 FilterCriteria
-	// if err := json.Unmarshal([]byte("{}"), &test0); err != nil {
-	// 	t.Fatal(err)
-	// }
-
-	// a := ethereum.FilterQuery{
-	// 	Addresses: addresses,
-	// 	FromBlock: big.NewInt(1),
-	// 	ToBlock:   big.NewInt(2),
-	// 	Topics:    [][]common.Hash{},
-	// }
-
-	// field, ok := FilterQuery(request_payload.Params)
-
-	// var filter *Filter
-	// if crit.BlockHash != nil {
-	// 	// Block filter requested, construct a single-shot filter
-	// 	filter = NewBlockFilter(api.backend, *crit.BlockHash, crit.Addresses, crit.Topics)
-	// } else {
-	// 	// Convert the RPC block numbers into internal representations
-	// 	begin := rpc.LatestBlockNumber.Int64()
-	// 	if crit.FromBlock != nil {
-	// 		begin = crit.FromBlock.Int64()
-	// 	}
-	// 	end := rpc.LatestBlockNumber.Int64()
-	// 	if crit.ToBlock != nil {
-	// 		end = crit.ToBlock.Int64()
-	// 	}
-	// 	// Construct the range filter
-	// 	filter = NewRangeFilter(api.backend, begin, end, crit.Addresses, crit.Topics)
-	// }
+	filter := LogsFilterQuery{}
+	result, _ := json.Marshal(request_payload.Params)
+	err := json.Unmarshal(result, &filter)
+	if err != nil {
+		logrus.Error("problem to unmarshal filter.", err.Error())
+		return
+	}
 
 	rows, err := GetDB().DB.Query(`select log_index,transaction_hash,transaction_index,address,data,
 	topic0,topic1,topic2,topic3,block_timestamp,block_number,block_hash from logs limit 1`)
