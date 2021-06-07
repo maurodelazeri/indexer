@@ -1,4 +1,4 @@
-package main
+package database
 
 import (
 	"database/sql"
@@ -44,7 +44,7 @@ func (db *DB) Begin() (*Tx, error) {
 func mustConnect() *DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
-		"127.0.0.1", 5432, "postgres", "Br@sa154", "matic_mainnet")
+		"35.231.211.79", 5432, "postgres", "Br@sa154", "matic_mainnet")
 	db, err := sql.Open("postgres", psqlInfo)
 	Check(err, "Connection URL invalid")
 	err = db.Ping()

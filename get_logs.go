@@ -1,82 +1,134 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
+	"strings"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/eth/filters"
+	"github.com/quiknode-labs/indexer/database"
 	"github.com/sirupsen/logrus"
 )
 
-func toBlockNumArg(number *big.Int) string {
-	if number == nil {
-		return "latest"
-	}
-	pending := big.NewInt(-1)
-	if number.Cmp(pending) == 0 {
-		return "pending"
-	}
-	return hexutil.EncodeBig(number)
+type rpcCall struct {
+	Version string            `json:"jsonrpc"`
+	Method  string            `json:"method"`
+	Params  []json.RawMessage `json:"params"`
+	ID      *json.RawMessage  `json:"id"`
 }
 
-// https://github.com/ethereum/go-ethereum/blob/d8ff53dfb8a516f47db37dbc7fd7ad18a1e8a125/ethclient/ethclient.go#L287
-func toFilterArg(q ethereum.FilterQuery) (interface{}, error) {
-	arg := map[string]interface{}{
-		"address": q.Addresses,
-		"topics":  q.Topics,
-	}
-	if q.BlockHash != nil {
-		arg["blockHash"] = *q.BlockHash
-		if q.FromBlock != nil || q.ToBlock != nil {
-			return nil, fmt.Errorf("cannot specify both BlockHash and FromBlock/ToBlock")
-		}
-	} else {
-		if q.FromBlock == nil {
-			arg["fromBlock"] = "0x0"
-		} else {
-			arg["fromBlock"] = toBlockNumArg(q.FromBlock)
-		}
-		arg["toBlock"] = toBlockNumArg(q.ToBlock)
-	}
-	return arg, nil
+type rpcResponse struct {
+	Version string           `json:"jsonrpc"`
+	ID      *json.RawMessage `json:"id,omitempty"`
+	Result  interface{}      `json:"result"`
 }
 
-type LogsFilterQuery struct {
-	BlockHash *string  // used by eth_getLogs, return logs only from block with this hash
-	FromBlock *big.Int // beginning of the queried range, nil means genesis block
-	ToBlock   *big.Int // end of the range, nil means latest block
-	Addresses []string // restricts matches to events created by specific contracts
-
-	// The Topic list restricts matches to particular event topics. Each event has a list
-	// of topics. Topics matches a prefix of that list. An empty element slice matches any
-	// topic. Non-empty elements represent an alternative that matches any of the
-	// contained topics.
-	//
-	// Examples:
-	// {} or nil          matches any topic list
-	// {{A}}              matches topic A in first position
-	// {{}, {B}}          matches any topic in first position AND B in second position
-	// {{A}, {B}}         matches topic A in first position AND B in second position
-	// {{A, B}, {C, D}}   matches topic (A OR B) in first position AND (C OR D) in second position
-	Topics [][]string
+func formatResponse(result interface{}, call *rpcCall) *rpcResponse {
+	return &rpcResponse{
+		Version: "2.0",
+		ID:      call.ID,
+		Result:  result,
+	}
 }
 
-func (q *QuiknodeIndexer) get_logs(rw http.ResponseWriter, r *http.Request, request_payload Request) {
-	filter := LogsFilterQuery{}
-	result, _ := json.Marshal(request_payload.Params)
-	err := json.Unmarshal(result, &filter)
+func (q *Quiknode) getLatestBlock(ctx context.Context) (int64, error) {
+	var result int64
+	err := database.GetDB().DB.QueryRowContext(ctx, "SELECT max(block_number) FROM logs;").Scan(&result)
+	return result, err
+}
+
+func (q *Quiknode) get_logs(ctx context.Context, rw http.ResponseWriter, r *http.Request, call *rpcCall) {
+	latestBlock, err := q.getLatestBlock(ctx)
 	if err != nil {
-		logrus.Error("problem to unmarshal filter.", err.Error())
+		logrus.Error("problem geting the last block")
+		cbody := json.RawMessage(`{"code":-32000,"message":"please try again"}`)
+		var cresp = Response{
+			Jsonrpc: "2.0",
+			Error:   cbody,
+		}
+		cresb, _ := json.Marshal(cresp)
+		rw.Header().Set("Content-Type", "application/json")
+		rw.Header().Set("X-Content-Type-Options", "nosniff")
+		io.WriteString(rw, string(cresb))
 		return
 	}
 
-	rows, err := GetDB().DB.Query(`select log_index,transaction_hash,transaction_index,address,data,
-	topic0,topic1,topic2,topic3,block_timestamp,block_number,block_hash from logs limit 1`)
+	crit := filters.FilterCriteria{}
+	if len(call.Params) < 1 {
+		logrus.Error("missing value for required argument 0")
+		cbody := json.RawMessage(`{"code":-32000,"message":"missing value for required argument 0"}`)
+		var cresp = Response{
+			Jsonrpc: "2.0",
+			Error:   cbody,
+		}
+		cresb, _ := json.Marshal(cresp)
+		rw.Header().Set("Content-Type", "application/json")
+		rw.Header().Set("X-Content-Type-Options", "nosniff")
+		io.WriteString(rw, string(cresb))
+		return
+	}
+	if err := json.Unmarshal(call.Params[0], &crit); err != nil {
+		logrus.Error("missing value for required argument 0")
+		cbody := json.RawMessage(`{"code":-32000,"message":"format is not valid"}`)
+		var cresp = Response{
+			Jsonrpc: "2.0",
+			Error:   cbody,
+		}
+		cresb, _ := json.Marshal(cresp)
+		rw.Header().Set("Content-Type", "application/json")
+		rw.Header().Set("X-Content-Type-Options", "nosniff")
+		io.WriteString(rw, string(cresb))
+		return
+	}
+
+	whereClause := []string{}
+	indexClause := ""
+	if crit.BlockHash != nil {
+		whereClause = append(whereClause, fmt.Sprintf("block_hash = %s", crit.BlockHash.String()))
+	}
+	var fromBlock, toBlock int64
+	if crit.FromBlock == nil || crit.FromBlock.Int64() < 0 {
+		fromBlock = latestBlock
+	} else {
+		fromBlock = crit.FromBlock.Int64()
+	}
+	whereClause = append(whereClause, fmt.Sprintf("block_number >= %d", fromBlock))
+	if crit.ToBlock == nil || crit.ToBlock.Int64() < 0 {
+		toBlock = latestBlock
+	} else {
+		toBlock = crit.ToBlock.Int64()
+	}
+	whereClause = append(whereClause, fmt.Sprintf("block_number <= %d", toBlock))
+
+	addressClause := []string{}
+	for _, address := range crit.Addresses {
+		addressClause = append(addressClause, fmt.Sprintf("address = %s", address.String()))
+	}
+	if len(addressClause) > 0 {
+		whereClause = append(whereClause, fmt.Sprintf("(%v)", strings.Join(addressClause, " OR ")))
+	}
+	topicsClause := []string{}
+	for i, topics := range crit.Topics {
+		topicClause := []string{}
+		for _, topic := range topics {
+			topicClause = append(topicClause, fmt.Sprintf("topic%v = %s", i, topic.String()))
+		}
+		if len(topicClause) > 0 {
+			topicsClause = append(topicsClause, fmt.Sprintf("(%v)", strings.Join(topicClause, " OR ")))
+		} else {
+			topicsClause = append(topicsClause, fmt.Sprintf("topic%v IS NOT NULL", i))
+		}
+	}
+	if len(topicsClause) > 0 {
+		whereClause = append(whereClause, fmt.Sprintf("(%v)", strings.Join(topicsClause, " AND ")))
+	}
+
+	query := fmt.Sprintf("SELECT address, topic0, topic1, topic2, topic3, data, block_number, transaction_hash, transaction_index, block_hash, log_index FROM logs %v WHERE %v;", indexClause, strings.Join(whereClause, " AND "))
+	rows, err := database.GetDB().DB.QueryContext(ctx, query)
 	if err != nil {
 		logrus.Error("problem with select.", err.Error())
 		cbody := json.RawMessage(`{"code":-32000,"message":"please try again"}`)
@@ -90,7 +142,6 @@ func (q *QuiknodeIndexer) get_logs(rw http.ResponseWriter, r *http.Request, requ
 		io.WriteString(rw, string(cresb))
 		return
 	}
-
 	var logs []Log
 	for rows.Next() {
 		var LogIndex int64
@@ -137,7 +188,21 @@ func (q *QuiknodeIndexer) get_logs(rw http.ResponseWriter, r *http.Request, requ
 		logs = append(logs, log)
 	}
 
+	responseBytes, err := json.Marshal(formatResponse(logs, call))
+	if err != nil {
+		logrus.Error("problem with select Scan.", err.Error())
+		cbody := json.RawMessage(`{"code":-32000,"message":"please try again"}`)
+		var cresp = Response{
+			Jsonrpc: "2.0",
+			Error:   cbody,
+		}
+		cresb, _ := json.Marshal(cresp)
+		rw.Header().Set("Content-Type", "application/json")
+		rw.Header().Set("X-Content-Type-Options", "nosniff")
+		io.WriteString(rw, string(cresb))
+		return
+	}
+	rw.WriteHeader(200)
 	rw.Header().Set("Content-Type", "application/json")
-	rw.Header().Set("X-Content-Type-Options", "nosniff")
-	json.NewEncoder(rw).Encode(logs)
+	rw.Write(responseBytes)
 }
